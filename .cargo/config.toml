@@ -1,0 +1,22 @@
+[build]
+target = "xtensa-esp32s3-espidf"
+
+[target.xtensa-esp32s3-espidf]
+linker = "ldproxy"
+# runner = "espflash flash --monitor"
+
+rustflags = ["--cfg", "espidf_time64"]
+
+[unstable]
+build-std = ["std", "panic_abort"]
+
+[env]
+# ESP-IDF version to use
+ESP_IDF_VERSION = "v5.4"
+
+# Pull in the esp-webrtc-solution as an extra ESP-IDF component.
+# Clone it alongside this project or adjust the path.
+ESP_IDF_COMPONENT_MANAGER_ENABLED = "1"
+
+# MCU — change to "esp32" for plain ESP32 boards
+MCU = "esp32s3"

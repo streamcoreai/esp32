@@ -1,0 +1,54 @@
+# Target: ESP32-S3 (change to CONFIG_IDF_TARGET_ESP32 for plain ESP32)
+CONFIG_IDF_TARGET="esp32s3"
+
+# ----- WiFi -----
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=32
+
+# ----- Flash + Partitions -----
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+
+# ----- Camera (OV2640 via DVP) -----
+CONFIG_CAMERA_TASK_STACK_SIZE=4096
+
+# ----- PSRAM (ESP32-S3 with octal PSRAM) -----
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240=y
+
+# ----- Memory -----
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=65536
+CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=4096
+
+# ----- mbedTLS for DTLS / SRTP (required by esp_peer) -----
+CONFIG_MBEDTLS_SSL_PROTO_DTLS=y
+CONFIG_MBEDTLS_SSL_DTLS_SRTP=y
+CONFIG_MBEDTLS_X509_CREATE_C=y
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=16384
+# Use default allocator so mbedTLS can spill large buffers to PSRAM.
+# Internal-only allocation can fail when esp-sr consumes DRAM.
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
+
+# ----- HTTP client (for WHIP signaling) -----
+CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y
+
+# ----- Logging -----
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
+
+# ----- Watchdog -----
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+
+# ----- ESP-SR Audio Front End (AFE) -----
+# Minimal config: WebRTC NS + AGC only, no wake words, no speech commands.
+# All defaults are correct (AFE_INTERFACE_V1, SR_NSN_WEBRTC, SR_VADN_WEBRTC,
+# SR_MN_CN_NONE, SR_MN_EN_NONE, all WN models=false, MODEL_IN_FLASH).
+# Explicitly set these to be safe:
+CONFIG_AFE_INTERFACE_V1=y
+CONFIG_SR_NSN_WEBRTC=y
+CONFIG_SR_VADN_WEBRTC=y
+CONFIG_SR_MN_CN_NONE=y
+CONFIG_SR_MN_EN_NONE=y

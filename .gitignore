@@ -1,0 +1,19 @@
+# Build artifacts
+/target/
+
+# ESP-IDF build outputs & toolchain (downloaded by espup/cargo build)
+/build/
+/.embuild/
+sdkconfig
+sdkconfig.old
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
