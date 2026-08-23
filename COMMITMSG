@@ -1,0 +1,7 @@
+fix: Cargo.toml repository URL 404s and the no-std category is wrong
+
+- Cargo.toml: fix repository URL; drop incorrect no-std category
+
+Fixes #11
+
+Signed-off-by: Vedant Madane <6527493+VedantMadane@users.noreply.github.com>
