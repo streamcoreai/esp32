@@ -10,7 +10,7 @@ use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::{Circle, PrimitiveStyle, Rectangle};
 use embedded_graphics::text::Text;
-use esp_idf_svc::hal::gpio::{Gpio14, Gpio21, Gpio45, Gpio47, Gpio48, PinDriver};
+use esp_idf_svc::hal::gpio::{AnyIOPin, PinDriver};
 use esp_idf_svc::hal::spi::config::Config as SpiConfig;
 use esp_idf_svc::hal::spi::{SpiDeviceDriver, SpiDriver, SpiDriverConfig, SPI2};
 use esp_idf_svc::hal::units::Hertz;
@@ -140,12 +140,12 @@ fn render_wrapped<D: DrawTarget<Color = Rgb565>>(
 }
 
 pub fn display_thread(
-    spi2: SPI2,
-    mosi: Gpio47,
-    sclk: Gpio21,
-    cs: Gpio14,
-    dc: Gpio45,
-    backlight: Gpio48,
+    spi2: SPI2<'static>,
+    mosi: AnyIOPin<'static>,
+    sclk: AnyIOPin<'static>,
+    cs: AnyIOPin<'static>,
+    dc: AnyIOPin<'static>,
+    backlight: AnyIOPin<'static>,
     state: alloc::sync::Arc<spin::Mutex<DisplayState>>,
 ) {
     if let Err(e) = display_thread_inner(spi2, mosi, sclk, dc, cs, backlight, state) {
@@ -154,12 +154,12 @@ pub fn display_thread(
 }
 
 fn display_thread_inner(
-    spi2: SPI2,
-    mosi: Gpio47,
-    sclk: Gpio21,
-    dc: Gpio45,
-    cs: Gpio14,
-    backlight: Gpio48,
+    spi2: SPI2<'static>,
+    mosi: AnyIOPin<'static>,
+    sclk: AnyIOPin<'static>,
+    dc: AnyIOPin<'static>,
+    cs: AnyIOPin<'static>,
+    backlight: AnyIOPin<'static>,
     state: alloc::sync::Arc<spin::Mutex<DisplayState>>,
 ) -> anyhow::Result<()> {
     info!("Display: initialising SPI + ST7789...");
@@ -171,7 +171,7 @@ fn display_thread_inner(
         spi2,
         sclk,
         mosi,
-        None::<Gpio47>,
+        None::<AnyIOPin>,
         &SpiDriverConfig::default(),
     )?;
 
@@ -361,5 +361,92 @@ fn display_thread_inner(
         }
 
         std::thread::sleep(core::time::Duration::from_millis(100));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// High-level handle — spawns the thread and exposes typed updaters.
+// ---------------------------------------------------------------------------
+
+/// Live handle to the on-board ST7789 display. Construct with [`spawn`] and
+/// drive from your [`Agent`](crate::Agent) callbacks.
+///
+/// ```ignore
+/// let display = va::display::DisplayHandle::spawn(
+///     p.spi2,
+///     p.pins.gpio47.downgrade(),
+///     p.pins.gpio21.downgrade(),
+///     p.pins.gpio14.downgrade(),
+///     p.pins.gpio45.downgrade(),
+///     p.pins.gpio48.downgrade(),
+/// )?;
+///
+/// agent.connect_with_callbacks(va::AgentOptions {
+///     on_state_changed: {
+///         let d = display.clone();
+///         Some(Box::new(move |s| d.set_connected(s == va::ConnectionState::Connected)))
+///     },
+///     on_transcript: {
+///         let d = display.clone();
+///         Some(Box::new(move |t, _| d.push_user_text(t.into())))
+///     },
+///     ..Default::default()
+/// });
+/// ```
+#[derive(Clone)]
+pub struct DisplayHandle {
+    state: alloc::sync::Arc<spin::Mutex<DisplayState>>,
+}
+
+impl DisplayHandle {
+    /// Spawn the background rendering thread and return a handle.
+    pub fn spawn(
+        spi2: SPI2<'static>,
+        mosi: AnyIOPin<'static>,
+        sclk: AnyIOPin<'static>,
+        cs: AnyIOPin<'static>,
+        dc: AnyIOPin<'static>,
+        backlight: AnyIOPin<'static>,
+    ) -> anyhow::Result<Self> {
+        let state = alloc::sync::Arc::new(spin::Mutex::new(DisplayState::new()));
+        let st = state.clone();
+        std::thread::Builder::new()
+            .name("voiceagent-display".into())
+            .stack_size(32 * 1024)
+            .spawn(move || display_thread(spi2, mosi, sclk, cs, dc, backlight, st))?;
+        Ok(Self { state })
+    }
+
+    pub fn set_connected(&self, connected: bool) {
+        self.state.lock().connected = connected;
+    }
+
+    pub fn set_mic_muted(&self, muted: bool) {
+        self.state.lock().mic_muted = muted;
+    }
+
+    pub fn set_speaking(&self, speaking: bool) {
+        self.state.lock().speaking = speaking;
+    }
+
+    pub fn set_audio_level(&self, level: u16) {
+        self.state.lock().audio_level = level;
+    }
+
+    /// Replace the most-recent user transcript line (for partial updates),
+    /// or push a new one if the last line was from the assistant.
+    pub fn set_user_text(&self, text: alloc::string::String) {
+        self.state.lock().set_last_or_push(Role::User, text);
+    }
+
+    /// Append to the most-recent assistant line, or push a new one if the
+    /// last line was from the user.
+    pub fn append_assistant_text(&self, text: &str) {
+        self.state.lock().append_or_push(Role::Assistant, text);
+    }
+
+    /// Force a brand-new user transcript line (use for `is_final = true`).
+    pub fn push_user_final(&self, text: alloc::string::String) {
+        self.state.lock().push_transcript(Role::User, text);
     }
 }

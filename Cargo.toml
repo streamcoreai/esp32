@@ -3,13 +3,21 @@ name = "voiceagent-esp32"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.77"
-description = "ESP32 voice agent client — connects to a Streamcore Voice Agent server via WebRTC (WHIP)"
+description = "ESP32 SDK for the Streamcore Voice Agent server (WebRTC over WHIP)"
 license = "MIT"
+repository = "https://github.com/streamcoreai/voiceagent-esp32"
+readme = "README.md"
+keywords = ["esp32", "webrtc", "voice", "whip", "embedded"]
+categories = ["embedded", "no-std", "multimedia::audio"]
+
+[lib]
+name = "voiceagent_esp32"
+path = "src/lib.rs"
 
 [dependencies]
-esp-idf-svc = { version = "0.52", features = ["binstart", "critical-section"] }
+esp-idf-svc = { version = "0.52", features = ["critical-section"] }
 esp-idf-hal = "0.46"
-esp-idf-sys = { version = "0.37", features = ["binstart"] }
+esp-idf-sys = "0.37"
 log = "0.4"
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
@@ -33,9 +41,12 @@ debug = true
 opt-level = "z"
 
 [package.metadata.esp-idf-sys]
-# The esp_peer C component from esp-webrtc-solution.
-# Included as a git submodule.  Run:  git submodule update --init
-# voiceagent_vc_frontend wraps ESP-SR AFE (AGC + Noise Suppression) for mic processing.
+# These ESP-IDF C components are required by the SDK and are pulled in
+# automatically by `esp-idf-sys` for any binary crate that depends on us.
+#
+#   * `esp_peer` from esp-webrtc-solution — included as a git submodule.
+#     After cloning the SDK repo run:  git submodule update --init
+#   * `voiceagent_vc_frontend` — wraps ESP-SR AFE (AGC + Noise Suppression).
 extra_components = [
     { component_dirs = "components/esp-webrtc-solution/components", components = ["esp_peer"] },
     { component_dirs = "components", components = ["voiceagent_vc_frontend"] }

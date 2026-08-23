@@ -27,9 +27,14 @@ extern "C" {
  * @param mic_channels   Number of microphone channels (typically 1).
  * @param has_reference  true if the audio stream contains a speaker-reference
  *                       channel (for AEC).  false for simplex setups.
+ * @param enable_wakenet true to also run WakeNet inside AFE — when set, each
+ *                       fetched frame may carry a wake-up event which the
+ *                       caller can poll via voiceagent_afe_consume_wake().
+ *                       The wake-word model used is the one selected in
+ *                       sdkconfig (`CONFIG_SR_WN9_*`).
  * @return 0 on success, negative on error.
  */
-int voiceagent_afe_create(int mic_channels, bool has_reference);
+int voiceagent_afe_create(int mic_channels, bool has_reference, bool enable_wakenet);
 
 /**
  * @brief Return the number of int16 samples expected by each feed() call.
@@ -70,6 +75,14 @@ int voiceagent_afe_fetch(int16_t *out, int *out_size);
  * @return 0 on success, -1 if no frame available.
  */
 int voiceagent_afe_fetch_nonblocking(int16_t *out, int *out_size);
+
+/**
+ * @brief Returns 1 if a wake-word event was detected since the last call to
+ *        this function, 0 otherwise. The flag latches on detection and is
+ *        cleared by reading it. Only meaningful when WakeNet was enabled at
+ *        create() time.
+ */
+int voiceagent_afe_consume_wake(void);
 
 /**
  * @brief Tear down the AFE pipeline and free all resources.
