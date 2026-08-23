@@ -9,6 +9,12 @@ pub const SAMPLE_RATE_HZ: u32 = 16_000;
 pub struct SpeakerDriver<'d> {
     driver: I2sDriver<'d, I2sTx>,
     last_peak: i32,
+    /// Reusable scratch buffer for 16-bit PCM → 32-bit I2S slot widening.
+    /// Allocated once and reused across all write_bytes calls — allocating
+    /// per call (50× per second) was causing speaker DMA underruns
+    /// because PSRAM allocations are slow and the render thread couldn't
+    /// keep up.
+    out_buf: alloc::vec::Vec<u8>,
 }
 
 impl<'d> SpeakerDriver<'d> {
@@ -17,6 +23,9 @@ impl<'d> SpeakerDriver<'d> {
         Self {
             driver,
             last_peak: 0,
+            // Pre-size for a couple of frames of 24 kHz output (480
+            // samples × 3 frames × 4 bytes/sample = 5760 bytes).
+            out_buf: alloc::vec::Vec::with_capacity(5760),
         }
     }
 
@@ -37,7 +46,10 @@ impl<'d> SpeakerDriver<'d> {
         if samples == 0 {
             return Ok(0);
         }
-        let mut out_buf = alloc::vec![0u8; samples * 4];
+        let needed = samples * 4;
+        if self.out_buf.len() < needed {
+            self.out_buf.resize(needed, 0);
+        }
         let mut peak: i32 = 0;
 
         for i in 0..samples {
@@ -47,7 +59,7 @@ impl<'d> SpeakerDriver<'d> {
                 peak = abs;
             }
             let s32: i32 = (s as i32) << 16;
-            out_buf[i * 4..i * 4 + 4].copy_from_slice(&s32.to_le_bytes());
+            self.out_buf[i * 4..i * 4 + 4].copy_from_slice(&s32.to_le_bytes());
         }
         self.last_peak = peak;
 
@@ -57,7 +69,7 @@ impl<'d> SpeakerDriver<'d> {
             esp_idf_svc::hal::delay::TickType::new_millis(timeout_ms as u64).0
         };
         self.driver
-            .write_all(&out_buf, timeout)
+            .write_all(&self.out_buf[..needed], timeout)
             .map_err(|e| anyhow::anyhow!("I2S write failed: {}", e))?;
         Ok(peak)
     }
@@ -141,6 +153,18 @@ impl<'d> MicDriver<'d> {
                 self.raw_buf[i * 4 + 2],
                 self.raw_buf[i * 4 + 3],
             ]);
+            // Shift 32-bit I2S word → i16. `>> 12` is neutral (no software
+            // gain), `>> 12` is +24 dB. INMP441 sensitivity varies a lot
+            // across boards; the mic-probe diagnostic in
+            // examples/esp32-desktop-car shows you the post-shift peak so
+            // you can pick the right value. Targets:
+            //   peak post-shift ≈ 15k–25k for normal speech
+            //   avg  post-shift ≈ 2k–5k
+            //
+            // `>> 12` is a good middle ground that doesn't clip on loud
+            // boards while still keeping quiet rooms in STT range. If
+            // you measure peaks consistently below 5k, drop to `>> 13`
+            // or `>> 12`. If you measure peaks above 50k, go to `>> 12`.
             let value = (s32 >> 12).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
             let bytes = value.to_le_bytes();
             self.pcm_buf[i * 2] = bytes[0];

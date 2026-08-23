@@ -35,6 +35,12 @@ typedef struct {
 
 static TaskHandle_t s_fetch_task = NULL;
 
+/* Wake-word detection: latched flag set by the fetch task, cleared when
+ * the Rust side calls voiceagent_afe_consume_wake(). 0 = no event,
+ * 1 = wake word detected since last consume. */
+#include <stdatomic.h>
+static atomic_int s_wake_flag = 0;
+
 /* ------------------------------------------------------------------ */
 /*  Fetch task — runs on core 1                                        */
 /* ------------------------------------------------------------------ */
@@ -49,6 +55,13 @@ static void afe_fetch_task(void *arg)
         if (res == NULL || res->ret_value == ESP_FAIL) {
             vTaskDelay(pdMS_TO_TICKS(10));
             continue;
+        }
+
+        /* Wake-word detection. WAKENET_DETECTED = 2 in ESP-SR. We latch
+         * the event so the Rust side can poll it from the agent worker. */
+        if (res->wakeup_state == WAKENET_DETECTED) {
+            atomic_store(&s_wake_flag, 1);
+            ESP_LOGI(TAG, "WakeNet: wake word detected");
         }
 
         /* Copy into a heap buffer and push to queue */
@@ -83,12 +96,14 @@ static void afe_fetch_task(void *arg)
 /*  Public API                                                         */
 /* ------------------------------------------------------------------ */
 
-int voiceagent_afe_create(int mic_channels, bool has_reference)
+int voiceagent_afe_create(int mic_channels, bool has_reference, bool enable_wakenet)
 {
     if (s_afe_data != NULL) {
         ESP_LOGW(TAG, "AFE already created, destroying first");
         voiceagent_afe_destroy();
     }
+
+    atomic_store(&s_wake_flag, 0);
 
     /* Suppress the "Ringbuffer of AFE is empty" warning from ESP-SR internals.
      * With push-to-talk the mic is idle most of the time, so this is expected. */
@@ -113,8 +128,16 @@ int voiceagent_afe_create(int mic_channels, bool has_reference)
     /* VAD — not needed for our pipeline (server does endpointing) */
     cfg->vad_init = false;
 
-    /* WakeNet — not needed */
-    cfg->wakenet_init = false;
+    /* WakeNet — enabled when the caller asks for voice activation. The
+     * concrete model is whatever's selected in sdkconfig
+     * (`CONFIG_SR_WN9_HIESP=y` etc.). NULL model_name lets esp-sr pick
+     * the first model partition that the user enabled in Kconfig. */
+    cfg->wakenet_init = enable_wakenet;
+    if (enable_wakenet) {
+        cfg->wakenet_mode = DET_MODE_90;
+        cfg->wakenet_model_name = NULL;
+        cfg->wakenet_model_name_2 = NULL;
+    }
 
     /* NS (Noise Suppression) — use WebRTC mode (no model file needed) */
     cfg->ns_init = true;
@@ -253,6 +276,12 @@ int voiceagent_afe_fetch_nonblocking(int16_t *out, int *out_size)
     free(frame.data);
 
     return 0;
+}
+
+int voiceagent_afe_consume_wake(void)
+{
+    /* Atomic exchange: read current value and clear in one step. */
+    return atomic_exchange(&s_wake_flag, 0);
 }
 
 void voiceagent_afe_destroy(void)

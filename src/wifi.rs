@@ -7,6 +7,15 @@ use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::{AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi};
 use log::info;
 
+/// One-liner WiFi STA helper — takes the system event loop and default NVS
+/// partition automatically. For cases where you already own those handles
+/// (or are sharing them with other components), use [`connect`] instead.
+pub fn connect_sta<'d>(modem: Modem<'d>, ssid: &str, password: &str) -> Result<Box<EspWifi<'d>>> {
+    let sysloop = EspSystemEventLoop::take()?;
+    let nvs = EspDefaultNvsPartition::take()?;
+    connect(modem, sysloop, nvs, ssid, password)
+}
+
 pub fn connect<'d>(
     modem: Modem<'d>,
     sysloop: EspSystemEventLoop,

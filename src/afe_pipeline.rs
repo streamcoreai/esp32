@@ -5,13 +5,18 @@ use anyhow::Result;
 use log::info;
 
 extern "C" {
-    fn voiceagent_afe_create(mic_channels: i32, has_reference: bool) -> i32;
+    fn voiceagent_afe_create(
+        mic_channels: i32,
+        has_reference: bool,
+        enable_wakenet: bool,
+    ) -> i32;
     fn voiceagent_afe_get_feed_chunksize() -> i32;
     fn voiceagent_afe_get_fetch_chunksize() -> i32;
     fn voiceagent_afe_feed(samples: *const i16, count: i32) -> i32;
     #[allow(dead_code)]
     fn voiceagent_afe_fetch(out: *mut i16, out_size: *mut i32) -> i32;
     fn voiceagent_afe_fetch_nonblocking(out: *mut i16, out_size: *mut i32) -> i32;
+    fn voiceagent_afe_consume_wake() -> i32;
     fn voiceagent_afe_destroy();
 }
 
@@ -23,8 +28,9 @@ pub struct AfePipeline {
 }
 
 impl AfePipeline {
-    pub fn new(mic_channels: i32, has_reference: bool) -> Result<Self> {
-        let ret = unsafe { voiceagent_afe_create(mic_channels, has_reference) };
+    pub fn new(mic_channels: i32, has_reference: bool, enable_wakenet: bool) -> Result<Self> {
+        let ret =
+            unsafe { voiceagent_afe_create(mic_channels, has_reference, enable_wakenet) };
         if ret != 0 {
             anyhow::bail!("voiceagent_afe_create failed: {ret}");
         }
@@ -79,6 +85,13 @@ impl AfePipeline {
 
     pub fn fetch_chunksize(&self) -> usize {
         self.fetch_chunk
+    }
+
+    /// Returns true if the WakeNet model fired a wake-word detection since
+    /// the last call. The flag is latched in the C fetch task and cleared
+    /// here, so each detection event is reported exactly once.
+    pub fn consume_wake_event(&mut self) -> bool {
+        unsafe { voiceagent_afe_consume_wake() != 0 }
     }
 }
 
