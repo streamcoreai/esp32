@@ -5,10 +5,10 @@ edition = "2021"
 rust-version = "1.77"
 description = "ESP32 SDK for the Streamcore Voice Agent server (WebRTC over WHIP)"
 license = "MIT"
-repository = "https://github.com/streamcoreai/voiceagent-esp32"
+repository = "https://github.com/streamcoreai/esp32"
 readme = "README.md"
 keywords = ["esp32", "webrtc", "voice", "whip", "embedded"]
-categories = ["embedded", "no-std", "multimedia::audio"]
+categories = ["embedded", "multimedia::audio"]
 
 [lib]
 name = "voiceagent_esp32"
